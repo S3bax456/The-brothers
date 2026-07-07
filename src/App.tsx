@@ -1,39 +1,34 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ShoppingBag, Plus, Minus, ChevronRight, X, Trash2, Utensils, Facebook, MapPin, Loader2, Gift, Star } from 'lucide-react';
+import { ShoppingBag, Plus, Minus, ChevronRight, X, Trash2, Utensils, MessageCircle, Phone, MapPin, Loader2, Gift, Star, Fish, Soup, Beer, Salad, ChefHat } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchSheetData, submitSheetData, SheetDish, SheetCategory, SHEET_ID } from './services/googleSheets';
-import { DEFAULT_MENU_DATA } from './data/menuData';
+import { DEFAULT_MENU_DATA, Dish, Category } from './data/menuData';
 
 // ==========================================
-// 📋 CONFIGURACIÓN DE LA PLANTILLA DEL MENÚ
+// 📋 CONFIGURACIÓN DE LA BRAND IDENTITY
 // ==========================================
-const RESTAURANTE_NAME = "Snack Tutti Frutti";
-const RESTAURANTE_SLOGAN = "Snack y Juguería Tropical";
-const WHATSAPP_NUMBER = "51942661467"; // Reemplaza con tu número de WhatsApp con código de país
-const FACEBOOK_URL = "";
-const MAPS_URL = "https://www.google.com/maps/search/?api=1&query=Puesto+E16+-+Interior+Mercado+2+-+Tarapoto";
-const LOGO_FOOTER_PATH = "/logo_tutti_frutti.png"; // Reemplaza con la ruta de tu logo en public/
-const BANNER_PATH = "/tropical_banner.png"; // Reemplaza con la ruta de tu banner en public/
-const MARQUEE_TEXT = "🍓 JUGOS FRESCOS Y NATURALES • 🌴 SABOR TROPICAL DESDE TARAPOTO • ¡PRUEBA NUESTROS ANTOJITOS DE LA SELVA! 🍍🍹 • ";
-// ==========================================
+const RESTAURANTE_NAME = "THE BROTHERS";
+const RESTAURANTE_SLOGAN = "Resto · Bar";
+const WHATSAPP_PRIMARY = "51999946993";
+const WHATSAPP_SECONDARY = "51971792871";
+const MARQUEE_TEXT = "🌊 EL VERDADERO SABOR DEL MAR • CEVICHES • CHUPES • TACU TACU • ARROCES • COMIDA CRIOLLA • TRÍOS • RONDAS • ¡TE ESPERAMOS EN THE BROTHERS! 🌊 ";
 
-// Mapa de imágenes locales por defecto para platos conocidos (vacío por defecto para la plantilla)
-const LOCAL_IMAGES: Record<string, string> = {
-  // "Nombre del Plato": "nombre_imagen.jpg",
+const getDishIcon = (catId: string) => {
+  const id = catId.toLowerCase();
+  if (id.includes('ceviche') || id.includes('leche') || id.includes('sudado') || id.includes('tiradito')) {
+    return <Fish size={28} className="text-primary/70 animate-pulse" />;
+  }
+  if (id.includes('chupe')) {
+    return <Soup size={28} className="text-accent/70" />;
+  }
+  if (id.includes('bebida')) {
+    return <Beer size={28} className="text-secondary/70" />;
+  }
+  if (id.includes('guarnicion')) {
+    return <Salad size={28} className="text-green-400/70" />;
+  }
+  return <ChefHat size={28} className="text-primary/60" />;
 };
-
-interface Dish {
-  nombre: string;
-  descripcion?: string;
-  imagen?: string;
-  precio: string;
-}
-
-interface Category {
-  id: string;
-  nombre: string;
-  items: Dish[];
-}
 
 interface CartItem {
   nombre: string;
@@ -48,6 +43,10 @@ export default function App() {
   const [showSummary, setShowSummary] = useState(false);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedWhatsApp, setSelectedWhatsApp] = useState<string>(WHATSAPP_PRIMARY);
+
+  // States for Pricing Size Modal Selection
+  const [sizeSelectionDish, setSizeSelectionDish] = useState<Dish | null>(null);
 
   // States for Birthday Form
   const [showBirthdayForm, setShowBirthdayForm] = useState(false);
@@ -100,12 +99,21 @@ export default function App() {
           nombre: c.nombre,
           items: dishes
             .filter(d => d.categoría === c.nombre)
-            .map(d => ({
-              nombre: d['nombre del plato'],
-              descripcion: d.descripción,
-              precio: d.precio,
-              imagen: LOCAL_IMAGES[d['nombre del plato']] || d['URL de imagen'] || null
-            }))
+            .map(d => {
+              let parsedPrice: any = d.precio;
+              try {
+                if (d.precio.trim().startsWith('{')) {
+                  parsedPrice = JSON.parse(d.precio);
+                }
+              } catch (e) {}
+
+              return {
+                nombre: d['nombre del plato'],
+                descripcion: d.descripción,
+                precio: parsedPrice,
+                imagen: d['URL de imagen'] || null
+              };
+            })
         }));
 
         setCategories(formattedCategories);
@@ -128,17 +136,25 @@ export default function App() {
 
   const cartCount = useMemo(() => cart.reduce((acc, item) => acc + item.cantidad, 0), [cart]);
 
-  const addToCart = (dish: Dish) => {
+  const handleAddClick = (dish: Dish) => {
+    if (typeof dish.precio === 'object') {
+      setSizeSelectionDish(dish);
+    } else {
+      addToCart(dish.nombre, dish.precio);
+    }
+  };
+
+  const addToCart = (nombre: string, precio: string) => {
     setCart(prev => {
-      const existing = prev.find(i => i.nombre === dish.nombre && i.precio === dish.precio);
+      const existing = prev.find(i => i.nombre === nombre && i.precio === precio);
       if (existing) {
         return prev.map(i =>
-          (i.nombre === dish.nombre && i.precio === dish.precio)
+          (i.nombre === nombre && i.precio === precio)
             ? { ...i, cantidad: i.cantidad + 1 }
             : i
         );
       }
-      return [...prev, { nombre: dish.nombre, precio: dish.precio, cantidad: 1 }];
+      return [...prev, { nombre, precio, cantidad: 1 }];
     });
   };
 
@@ -166,12 +182,13 @@ export default function App() {
 
   const sendToWhatsApp = () => {
     const total = calculateTotal();
-    let message = `*Hola ${RESTAURANTE_NAME}, deseo realizar un pedido:*\n\n`;
+    let message = `*🌊 ¡Hola The Brothers! Deseo realizar un pedido:*\n\n`;
     cart.forEach(item => {
       message += `• ${item.cantidad} x ${item.nombre} (${item.precio})\n`;
     });
-    message += `\n*TOTAL: S/.${total.toFixed(2)}*`;
-    const url = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+    message += `\n*TOTAL: S/. ${total.toFixed(2)}*`;
+    message += `\n\n📌 _Pedido realizado desde el Menú Digital_`;
+    const url = `https://wa.me/${selectedWhatsApp}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   };
 
@@ -236,51 +253,30 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-white">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#1B1B1B]">
         <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-        <p className="font-slogan text-primary font-bold tracking-widest uppercase text-xs">Cargando delicias...</p>
+        <p className="font-category text-primary font-bold tracking-widest uppercase text-xs">Cargando delicias...</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white min-h-screen relative shadow-2xl overflow-hidden flex flex-col font-sans">
-      <header className="sticky top-0 bg-white/95 backdrop-blur-md z-50 px-5 py-4 flex justify-between items-center border-b border-gray-100">
-        <div className="flex flex-col items-start">
-          <h1 className="font-title text-[28px] text-primary leading-none tracking-wide">{RESTAURANTE_NAME}</h1>
-          <span className="font-slogan text-[11px] text-secondary font-bold tracking-wider mt-0.5">{RESTAURANTE_SLOGAN}</span>
+    <div className="max-w-md mx-auto bg-[#1B1B1B] text-white min-h-screen relative shadow-2xl overflow-hidden flex flex-col font-sans">
+      
+      {/* HEADER PREMIUM */}
+      <header className="sticky top-0 bg-[#1B1B1B]/95 backdrop-blur-md z-50 px-5 py-3 flex justify-between items-center border-b border-white/5">
+        <div className="flex items-center select-none">
+          <img src="/logo.png" alt="The Brothers Logo" className="h-12 w-auto object-contain" />
         </div>
         <div className="flex items-center gap-2">
-          {FACEBOOK_URL && (
-            <motion.a
-              href={FACEBOOK_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              whileTap={{ scale: 0.95 }}
-              className="w-11 h-11 bg-primary/10 rounded-full flex items-center justify-center text-primary cursor-pointer"
-            >
-              <Facebook size={22} />
-            </motion.a>
-          )}
-          {MAPS_URL && (
-            <motion.a
-              href={MAPS_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              whileTap={{ scale: 0.95 }}
-              className="w-11 h-11 bg-primary/10 rounded-full flex items-center justify-center text-primary cursor-pointer"
-            >
-              <MapPin size={22} />
-            </motion.a>
-          )}
           <motion.div
             onClick={() => cartCount > 0 && setShowSummary(true)}
             whileTap={{ scale: 0.95 }}
-            className="w-11 h-11 bg-primary/10 rounded-full flex items-center justify-center relative cursor-pointer"
+            className="w-11 h-11 bg-primary/10 rounded-full flex items-center justify-center relative cursor-pointer border border-primary/20 text-primary hover:bg-primary/20 transition-all duration-200"
           >
-            <ShoppingBag size={22} className="text-primary" />
+            <ShoppingBag size={20} />
             {cartCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[20px] h-5 bg-secondary text-white rounded-full text-[10px] font-bold flex items-center justify-center px-1">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[20px] h-5 bg-secondary text-dark rounded-full text-[10px] font-black flex items-center justify-center px-1">
                 {cartCount}
               </span>
             )}
@@ -288,49 +284,71 @@ export default function App() {
         </div>
       </header>
 
-      <div className="w-full bg-primary py-2 overflow-hidden flex items-center">
-        <div className="animate-marquee flex gap-6 text-white font-slogan font-bold text-[11px] tracking-widest uppercase whitespace-nowrap">
-          {[...Array(10)].map((_, i) => (
+      {/* MARQUEE RUNNING TEXT */}
+      <div className="w-full bg-primary py-2 overflow-hidden flex items-center border-b border-primary/20">
+        <div className="animate-marquee flex gap-6 text-white font-slogan font-bold text-[10px] tracking-wider uppercase whitespace-nowrap">
+          {[...Array(8)].map((_, i) => (
             <span key={i}>{MARQUEE_TEXT}</span>
           ))}
         </div>
       </div>
 
+      {/* CUMPLEANOS REGISTRO BANNER */}
       <div className="px-5 pt-4">
         <motion.button 
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.95 }}
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.98 }}
           animate={{ 
-            boxShadow: ["0px 0px 0px 0px rgba(245,158,11,0.6)", "0px 0px 20px 8px rgba(245,158,11,0)", "0px 0px 0px 0px rgba(245,158,11,0)"] 
+            boxShadow: ["0px 0px 0px 0px rgba(245,180,0,0.4)", "0px 0px 15px 4px rgba(245,180,0,0)", "0px 0px 0px 0px rgba(245,180,0,0)"] 
           }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
+          transition={{ repeat: Infinity, duration: 2 }}
           onClick={() => setShowBirthdayForm(true)}
-          className="w-full bg-gradient-to-r from-yellow-500 via-secondary to-amber-500 text-white py-3 px-4 rounded-2xl flex items-center justify-center gap-2 font-bold text-[10px] sm:text-[11px] uppercase tracking-wide border border-yellow-400 relative overflow-hidden group text-center"
+          className="w-full bg-gradient-to-r from-secondary via-amber-500 to-secondary text-dark py-3 px-4 rounded-2xl flex items-center justify-center gap-2.5 font-bold text-[11px] uppercase tracking-wide border border-secondary/30 relative overflow-hidden group text-center"
         >
-          <div className="absolute inset-0 shimmer opacity-30 mix-blend-overlay"></div>
-          <Gift size={18} className="animate-bounce shrink-0" />
-          <span>¡Ponle sabor y color a tu cumpleaños! 🍓 <span className="text-yellow-100 font-black underline">Regístrate aquí</span> y llévate un batido Tutti Frutti de cortesía para celebrar de forma tropical. 🥤🎁</span>
+          <Gift size={18} className="animate-bounce shrink-0 text-dark" />
+          <span className="text-dark font-extrabold">🎉 ¡Cumpleaños con sabor peruano! <span className="underline font-black">Regístrate aquí</span> y recibe una sorpresa exclusiva. 🎁</span>
         </motion.button>
       </div>
 
-      <div className="px-5 pt-4 pb-3">
-        <div className="relative w-full rounded-3xl overflow-hidden shadow-xl aspect-[2/1] bg-gradient-to-br from-primary/10 to-secondary/15 flex flex-col items-center justify-center text-center p-4 border border-dashed border-primary/20">
-          <p className="font-dish font-bold text-primary text-sm uppercase tracking-wider">
-            aca va a imagen
-          </p>
+      {/* HERO BANNER */}
+      <div className="px-5 pt-4">
+        <div className="relative w-full rounded-2xl overflow-hidden shadow-xl aspect-[2/1] border border-white/5 bg-[#2A2A2A]">
+          <img src="/banner.png" alt="The Brothers Hero" className="w-full h-full object-cover" />
         </div>
       </div>
 
-      <div className="px-5 py-3 overflow-x-auto no-scrollbar">
+      {/* CONTACT INFO CARD */}
+      <div className="px-5 pt-3">
+        <div className="bg-[#2A2A2A] rounded-2xl p-3 border border-white/5 flex justify-between items-center text-xs">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-gray-400 font-medium">Pedidos y reservas:</span>
+            <div className="flex gap-3 text-[11px] font-bold text-primary">
+              <a href={`tel:${WHATSAPP_PRIMARY}`} className="flex items-center gap-1 hover:underline">
+                <Phone size={12} /> 999 946 993
+              </a>
+              <a href={`tel:${WHATSAPP_SECONDARY}`} className="flex items-center gap-1 hover:underline">
+                <Phone size={12} /> 971 792 871
+              </a>
+            </div>
+          </div>
+          <div className="flex flex-col text-right">
+            <span className="text-gray-400 font-medium">Horario de Atención:</span>
+            <span className="font-bold text-secondary">10:00 am – 8:00 pm</span>
+          </div>
+        </div>
+      </div>
+
+      {/* CATEGORIES NAVIGATION BAR */}
+      <div className="px-5 py-3 sticky top-[73px] bg-[#1B1B1B]/95 backdrop-blur-md z-40 border-b border-white/5 overflow-x-auto no-scrollbar">
         <div className="flex gap-2 w-max">
           {categories.map(cat => (
             <button
               key={cat.id}
               onClick={() => scrollToCategory(cat.id)}
-              className={`px-4 py-2 rounded-full text-[11px] font-category font-semibold whitespace-nowrap transition-all duration-200 border
+              className={`px-4 py-2 rounded-full text-[11px] font-category font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-200 border
                 ${activeCategory === cat.id
                   ? 'bg-primary text-white border-primary shadow-md shadow-primary/20'
-                  : 'bg-white text-dark border-gray-200 hover:border-primary/40 hover:text-primary'
+                  : 'bg-[#2A2A2A] text-gray-300 border-white/5 hover:border-primary/40 hover:text-primary'
                 }`}
             >
               {cat.nombre}
@@ -339,96 +357,105 @@ export default function App() {
         </div>
       </div>
 
-      <main className="flex-1 overflow-y-auto pb-32 px-5">
+      {/* PLATES LISTING */}
+      <main className="flex-1 overflow-y-auto pb-32 px-5 mt-4">
         {categories.map(cat => (
           <section key={cat.id} id={`cat-${cat.id}`} className="mb-10 scroll-mt-28">
-            <div className="mb-5 pt-2">
-              <div className="flex items-center gap-2 mb-1">
-                <Utensils className="text-primary wave-icon" size={22} />
-                <h3 className="font-category font-semibold text-primary text-[26px] leading-none tracking-wide category-underline">
+            <div className="mb-5 pt-2 border-b border-white/5 pb-2">
+              <div className="flex items-center gap-2">
+                <Utensils className="text-primary wave-icon" size={20} />
+                <h3 className="font-category font-extrabold text-white text-[22px] uppercase tracking-wide">
                   {cat.nombre}
                 </h3>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {cat.items.map((dish, idx) => (
-                <motion.div
-                  key={idx}
-                  whileHover={{ y: -4 }}
-                  className="bg-white rounded-[2rem] overflow-hidden flex flex-col shadow-sm border border-gray-100 hover:border-primary/30 hover:shadow-md transition-all duration-200"
-                >
-                  <div className="bg-primary/5 aspect-square flex items-center justify-center relative overflow-hidden p-4 border-b border-gray-100">
-                    <span className="font-dish font-bold text-[11px] text-primary uppercase tracking-wider text-center">
-                      aca va a imagen
-                    </span>
-                  </div>
-                  
-                  <div className="p-4 flex flex-col flex-1">
-                    <h4 className="font-dish font-bold text-dark text-[13px] leading-tight mb-1">
-                      {dish.nombre}
-                    </h4>
-                    {dish.descripcion && (
-                      <p className="text-[10px] text-gray-400 leading-tight mb-2 line-clamp-3">
-                        {dish.descripcion}
-                      </p>
-                    )}
-                    <div className="flex-1"></div>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="font-dish font-bold text-primary text-[16px] whitespace-nowrap">
-                        {dish.precio}
-                      </span>
-                      <motion.button
-                        whileTap={{ scale: 0.8 }}
-                        onClick={() => addToCart(dish)}
-                        className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center text-primary transition-colors duration-200 shrink-0"
-                      >
-                        <Plus size={16} strokeWidth={3} />
-                      </motion.button>
+              {cat.items.map((dish, idx) => {
+                const hasDoublePrice = typeof dish.precio === 'object';
+                const displayPrice = hasDoublePrice 
+                  ? `${(dish.precio as any).personal} / ${(dish.precio as any).familiar}`
+                  : dish.precio;
+
+                return (
+                  <motion.div
+                    key={idx}
+                    whileHover={{ y: -3 }}
+                    className="bg-[#2A2A2A] rounded-2xl overflow-hidden flex flex-col shadow-lg border border-white/5 hover:border-primary/30 transition-all duration-200"
+                  >
+                    {/* Placeholder de Imagen */}
+                    <div className="aspect-[4/3] bg-gradient-to-br from-[#1F1F1F] to-[#252525] flex items-center justify-center border-b border-white/5 relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-radial from-primary/5 via-transparent to-transparent opacity-60"></div>
+                      {getDishIcon(cat.id)}
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+
+                    {/* PLATO DETALLES */}
+                    <div className="p-4 flex flex-col flex-1">
+                      <h4 className="font-dish font-semibold text-white text-[13px] leading-snug mb-1">
+                        {dish.nombre}
+                      </h4>
+                      {dish.descripcion && (
+                        <p className="text-[10px] text-gray-400 leading-normal mb-3 line-clamp-3">
+                          {dish.descripcion}
+                        </p>
+                      )}
+                      <div className="flex-1"></div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="font-category font-bold text-secondary text-[13px]">
+                          {displayPrice}
+                        </span>
+                        <motion.button
+                          whileTap={{ scale: 0.8 }}
+                          onClick={() => handleAddClick(dish)}
+                          className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white transition-colors duration-200 shrink-0 shadow-md shadow-primary/20"
+                        >
+                          <Plus size={16} strokeWidth={3} />
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           </section>
         ))}
 
-        <section className="mt-8 mb-4 border border-gray-100 bg-gray-50 rounded-3xl p-5 text-center shadow-sm">
-          <h3 className="font-title text-primary text-[22px] leading-tight mb-2">¿Cómo estuvo todo?</h3>
-          <p className="text-[11px] text-gray-500 mb-4 px-4">Ayúdanos a mejorar calificando tu experiencia con nosotros</p>
+        {/* FEEDBACK SECTION */}
+        <section className="mt-8 mb-4 border border-white/10 bg-[#2A2A2A] rounded-2xl p-5 text-center shadow-sm">
+          <h3 className="font-title text-secondary text-[22px] leading-tight mb-1">¿Cómo estuvo todo?</h3>
+          <p className="text-[11px] text-gray-400 mb-4 px-4">Califica tu experiencia y ayúdanos a brindarte el mejor servicio</p>
           <motion.button 
             whileTap={{ scale: 0.95 }}
             onClick={() => setShowReviewForm(true)}
-            className="bg-primary text-white px-6 py-3 rounded-2xl font-bold text-sm shadow-md shadow-primary/20 flex items-center justify-center gap-2 mx-auto w-full"
+            className="bg-primary text-white px-6 py-3 rounded-xl font-bold text-xs shadow-md shadow-primary/20 flex items-center justify-center gap-2 mx-auto w-full"
           >
-            <Star size={18} className="fill-white" />
-            Reseña nuestra comida
+            <Star size={16} className="fill-white" />
+            Reseñar nuestra comida
           </motion.button>
         </section>
 
-        <footer className="mt-8 pt-8 pb-10 border-t border-gray-200 flex flex-col items-center justify-center">
-          <p className="font-title text-2xl text-primary mb-4">{RESTAURANTE_NAME}</p>
-          <div className="w-32 h-32 mb-6 rounded-2xl border border-dashed border-primary/30 bg-primary/5 flex items-center justify-center text-center p-2">
-            <span className="font-dish font-bold text-[10px] text-primary uppercase tracking-wide">aca va a imagen</span>
-          </div>
-          <p className="text-[11px] text-gray-400 font-medium">© 2026 Todos los derechos reservados.</p>
+        {/* FOOTER */}
+        <footer className="mt-8 pt-8 pb-10 border-t border-white/5 flex flex-col items-center justify-center">
+          <p className="font-title text-xl text-white tracking-widest">{RESTAURANTE_NAME}</p>
+          <p className="text-[11px] text-gray-500 font-medium mt-1">© 2026 Todos los derechos reservados.</p>
         </footer>
 
-        <div className="bg-dark py-6 flex flex-col items-center justify-center">
-          <p className="text-[10px] font-bold tracking-[0.2em] uppercase mb-1 opacity-50 text-white/50">Digital Menu Experience</p>
+        <div className="bg-[#1B1B1B] py-6 flex flex-col items-center justify-center border-t border-white/5">
+          <p className="text-[9px] font-bold tracking-[0.2em] uppercase mb-1 opacity-40 text-white/50">Digital Menu Experience</p>
           <motion.a 
             href="https://tymasolutions.lat/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 font-bold text-sm tracking-tight group cursor-pointer"
+            className="flex items-center gap-1 font-bold text-xs tracking-tight group cursor-pointer"
             whileTap={{ scale: 0.95 }}
           >
-            <span className="text-white group-hover:text-[#00BFFF] transition-colors duration-200">Hecho por Tyma</span>
-            <span className="text-[#00BFFF] group-hover:text-white transition-colors duration-200">Solutions</span>
+            <span className="text-white group-hover:text-primary transition-colors duration-200">Hecho por Tyma</span>
+            <span className="text-primary group-hover:text-white transition-colors duration-200">Solutions</span>
           </motion.a>
         </div>
       </main>
 
+      {/* FLOAT FLOATING CART BAR */}
       <AnimatePresence>
         {cartCount > 0 && !showSummary && (
           <motion.div
@@ -437,190 +464,250 @@ export default function App() {
             exit={{ y: 100 }}
             className="fixed bottom-0 w-full max-w-md p-5 z-40"
           >
-            <div className="glass rounded-[2rem] p-4 flex items-center justify-between border border-white/50 shadow-2xl">
+            <div className="bg-[#2A2A2A]/95 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between border border-white/10 shadow-2xl">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center relative overflow-hidden">
+                <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center relative overflow-hidden">
                   <div className="shimmer absolute inset-0 opacity-20"></div>
                   <ShoppingBag size={20} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tu Pedido</p>
-                  <p className="font-bold text-dark text-lg">{cartCount} Artículos</p>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Tu Pedido</p>
+                  <p className="font-bold text-white text-md">{cartCount} Artículos</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowSummary(true)}
-                className="bg-primary text-white px-6 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-primary/30 font-bold text-sm"
+                className="bg-primary text-white px-5 py-2.5 rounded-xl flex items-center gap-1.5 shadow-lg shadow-primary/20 font-bold text-xs"
               >
                 Ver Pedido
-                <ChevronRight size={18} />
+                <ChevronRight size={16} />
               </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* DOUBLE PRICE SELECTOR MODAL */}
+      <AnimatePresence>
+        {sizeSelectionDish && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              className="bg-[#2A2A2A] w-full max-w-xs rounded-2xl p-5 shadow-2xl relative border border-white/10"
+            >
+              <button
+                onClick={() => setSizeSelectionDish(null)}
+                className="absolute top-4 right-4 w-7 h-7 bg-white/5 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-300"
+              >
+                <X size={16} />
+              </button>
+
+              <h3 className="font-category font-bold text-lg text-white mb-1.5 pr-6">
+                {sizeSelectionDish.nombre}
+              </h3>
+              <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">
+                Selecciona la porción que deseas ordenar:
+              </p>
+
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => {
+                    const price = (sizeSelectionDish.precio as any).personal;
+                    addToCart(`${sizeSelectionDish.nombre} (Personal)`, price);
+                    setSizeSelectionDish(null);
+                  }}
+                  className="w-full bg-[#1B1B1B] hover:bg-primary/10 border border-white/5 hover:border-primary/30 p-3 rounded-xl flex justify-between items-center transition-all duration-200"
+                >
+                  <span className="text-white text-xs font-semibold">Porción Personal</span>
+                  <span className="text-secondary text-xs font-bold">{(sizeSelectionDish.precio as any).personal}</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const price = (sizeSelectionDish.precio as any).familiar;
+                    addToCart(`${sizeSelectionDish.nombre} (Familiar)`, price);
+                    setSizeSelectionDish(null);
+                  }}
+                  className="w-full bg-[#1B1B1B] hover:bg-primary/10 border border-white/5 hover:border-primary/30 p-3 rounded-xl flex justify-between items-center transition-all duration-200"
+                >
+                  <span className="text-white text-xs font-semibold">Porción Familiar</span>
+                  <span className="text-secondary text-xs font-bold">{(sizeSelectionDish.precio as any).familiar}</span>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CART DETAIL SUMMARY MODAL */}
       <AnimatePresence>
         {showSummary && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-end justify-center p-4 lg:p-0"
+            className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-sm flex items-end justify-center p-4 lg:p-0"
           >
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              className="bg-white w-full max-w-md rounded-t-[3rem] p-6 max-h-[85vh] overflow-y-auto"
+              className="bg-[#2A2A2A] w-full max-w-md rounded-t-3xl p-6 max-h-[85vh] overflow-y-auto border-t border-white/10"
             >
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="font-title text-2xl text-primary">Mi Pedido</h2>
+              <div className="flex justify-between items-center mb-5">
+                <h2 className="font-category text-xl font-bold text-white uppercase tracking-wider">Mi Pedido</h2>
                 <button
                   onClick={() => setShowSummary(false)}
-                  className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center"
+                  className="w-9 h-9 bg-white/5 rounded-full flex items-center justify-center hover:bg-white/10 text-gray-300"
                 >
-                  <X size={20} className="text-gray-400" />
+                  <X size={18} />
                 </button>
               </div>
-              <div className="space-y-3 mb-8">
+              
+              <div className="space-y-2 mb-6">
                 {cart.map(item => (
                   <div
                     key={`${item.nombre}-${item.precio}`}
-                    className="flex items-center gap-4 bg-gray-50 p-4 rounded-2xl"
+                    className="flex items-center gap-3 bg-[#1B1B1B] p-3 rounded-xl border border-white/5"
                   >
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-dish font-semibold text-dark text-sm truncate">{item.nombre}</h4>
-                      <p className="font-dish text-xs text-primary font-bold">{item.precio}</p>
+                      <h4 className="font-dish font-medium text-white text-xs truncate">{item.nombre}</h4>
+                      <p className="font-category text-[11px] text-secondary font-bold">{item.precio}</p>
                     </div>
-                    <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-xl border border-gray-100">
-                      <button onClick={() => updateQuantity(item.nombre, item.precio, -1)} className="text-gray-400">
-                        <Minus size={16} />
+                    <div className="flex items-center gap-2.5 bg-[#2A2A2A] px-2.5 py-1 rounded-lg border border-white/5">
+                      <button onClick={() => updateQuantity(item.nombre, item.precio, -1)} className="text-gray-400 hover:text-white">
+                        <Minus size={14} />
                       </button>
-                      <span className="font-dish font-bold text-sm w-4 text-center">{item.cantidad}</span>
-                      <button onClick={() => updateQuantity(item.nombre, item.precio, 1)} className="text-primary">
-                        <Plus size={16} />
+                      <span className="font-category font-bold text-xs text-white w-3 text-center">{item.cantidad}</span>
+                      <button onClick={() => updateQuantity(item.nombre, item.precio, 1)} className="text-primary hover:text-white">
+                        <Plus size={14} />
                       </button>
                     </div>
                     <button
                       onClick={() => updateQuantity(item.nombre, item.precio, -item.cantidad)}
-                      className="text-red-300 ml-1"
+                      className="text-accent/60 hover:text-accent ml-1"
                     >
-                      <Trash2 size={18} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-dashed border-gray-200 pt-6 mb-8">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-dish text-xl font-bold text-dark">Total a pagar</h3>
-                  <h3 className="font-dish text-xl font-bold text-primary">S/.{calculateTotal().toFixed(2)}</h3>
+
+              {/* WHATSAPP SELECTOR */}
+              <div className="mb-6 p-4 bg-[#1B1B1B] rounded-xl border border-white/5">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wide block mb-2">Enviar pedido a:</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setSelectedWhatsApp(WHATSAPP_PRIMARY)}
+                    className={`p-2.5 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5
+                      ${selectedWhatsApp === WHATSAPP_PRIMARY
+                        ? 'bg-primary text-white border-primary shadow-sm shadow-primary/20'
+                        : 'bg-[#2A2A2A] text-gray-300 border-white/5 hover:border-primary/25'
+                      }`}
+                  >
+                    <MessageCircle size={14} /> Contacto Principal
+                  </button>
+                  <button
+                    onClick={() => setSelectedWhatsApp(WHATSAPP_SECONDARY)}
+                    className={`p-2.5 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-1.5
+                      ${selectedWhatsApp === WHATSAPP_SECONDARY
+                        ? 'bg-primary text-white border-primary shadow-sm shadow-primary/20'
+                        : 'bg-[#2A2A2A] text-gray-300 border-white/5 hover:border-primary/25'
+                      }`}
+                  >
+                    <MessageCircle size={14} /> Contacto Secundario
+                  </button>
                 </div>
               </div>
+
+              <div className="border-t border-dashed border-white/10 pt-4 mb-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-category text-md font-bold text-white uppercase tracking-wider">Total a pagar</h3>
+                  <h3 className="font-category text-lg font-bold text-secondary">S/. {calculateTotal().toFixed(2)}</h3>
+                </div>
+              </div>
+
               <button
                 onClick={sendToWhatsApp}
-                className="w-full bg-[#25D366] text-white py-4 rounded-2xl flex items-center justify-center gap-3 shadow-xl shadow-green-100 hover:scale-[1.02] transition-transform font-bold"
+                className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-dark py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-900/10 hover:scale-[1.01] transition-transform font-bold text-sm"
               >
-                Enviar Pedido a WhatsApp
-                <ChevronRight size={20} />
+                Enviar Pedido por WhatsApp
+                <ChevronRight size={18} />
               </button>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {selectedImage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setSelectedImage(null)}
-          >
-            <button
-              className="absolute top-6 right-6 w-12 h-12 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedImage(null);
-              }}
-            >
-              <X size={28} />
-            </button>
-            <motion.img
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              src={selectedImage}
-              alt="Plato ampliado"
-              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+      {/* CUMPLEANOS REGISTRY MODAL */}
       <AnimatePresence>
         {showBirthdayForm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto"
+              className="bg-[#2A2A2A] w-full max-w-sm rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto border border-white/10 text-white"
             >
               <button
                 onClick={() => setShowBirthdayForm(false)}
-                className="absolute top-4 right-4 w-8 h-8 bg-gray-50 rounded-full flex items-center justify-center"
+                className="absolute top-4 right-4 w-8 h-8 bg-white/5 rounded-full flex items-center justify-center text-gray-400 hover:bg-white/10"
               >
-                <X size={18} className="text-gray-400" />
+                <X size={16} />
               </button>
 
               <div className="flex flex-col items-center text-center mb-5 mt-2">
-                <div className="w-12 h-12 bg-amber-50 rounded-full flex items-center justify-center mb-3">
-                  <Gift size={24} className="text-secondary" />
+                <div className="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center mb-3 text-secondary border border-secondary/20">
+                  <Gift size={22} />
                 </div>
-                <h2 className="font-title text-2xl text-dark leading-none mb-2">¡Tu Cumpleaños!</h2>
-                <p className="text-xs text-gray-500">Déjanos tus datos para enviarte una sorpresa en tu día especial.</p>
+                <h2 className="font-category font-bold text-lg text-white uppercase tracking-wider mb-1">¡Tu Cumpleaños!</h2>
+                <p className="text-[11px] text-gray-400 leading-normal">Déjanos tus datos para enviarte una sorpresa en tu día especial.</p>
               </div>
 
               {birthdaySuccess ? (
-                <div className="bg-green-50 text-green-600 p-4 rounded-2xl text-center text-sm font-bold border border-green-100">
+                <div className="bg-green-500/10 text-green-400 p-4 rounded-xl text-center text-xs font-bold border border-green-500/20">
                   ¡Gracias! Tus datos han sido guardados.
                 </div>
               ) : (
                 <form onSubmit={handleBirthdaySubmit} className="space-y-3">
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Nombre Completo</label>
-                    <input required type="text" value={birthdayData.nombre} onChange={e => setBirthdayData({...birthdayData, nombre: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-secondary/50 transition-colors" placeholder="Ej. Juan Pérez" />
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Nombre Completo</label>
+                    <input required type="text" value={birthdayData.nombre} onChange={e => setBirthdayData({...birthdayData, nombre: e.target.value})} className="w-full bg-[#1B1B1B] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-secondary/50 transition-colors" placeholder="Ej. Juan Pérez" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Teléfono</label>
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Teléfono</label>
                     <input required type="tel" minLength={9} maxLength={11} pattern="[0-9]*" value={birthdayData.telefono} onChange={e => {
                       const val = e.target.value.replace(/\D/g, '');
                       setBirthdayData({...birthdayData, telefono: val});
-                    }} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-secondary/50 transition-colors" placeholder="Ej. 987654321" />
+                    }} className="w-full bg-[#1B1B1B] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-secondary/50 transition-colors" placeholder="Ej. 987654321" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Fecha de Nacimiento</label>
-                    <input required type="date" value={birthdayData.fechaNacimiento} onChange={e => setBirthdayData({...birthdayData, fechaNacimiento: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-secondary/50 transition-colors text-gray-700" />
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Fecha de Nacimiento</label>
+                    <input required type="date" value={birthdayData.fechaNacimiento} onChange={e => setBirthdayData({...birthdayData, fechaNacimiento: e.target.value})} className="w-full bg-[#1B1B1B] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-secondary/50 transition-colors" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Distrito</label>
-                    <input required type="text" value={birthdayData.distrito} onChange={e => setBirthdayData({...birthdayData, distrito: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-secondary/50 transition-colors" placeholder="Ej. Miraflores" />
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Distrito</label>
+                    <input required type="text" value={birthdayData.distrito} onChange={e => setBirthdayData({...birthdayData, distrito: e.target.value})} className="w-full bg-[#1B1B1B] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-secondary/50 transition-colors" placeholder="Ej. Piura" />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Correo Electrónico (Opcional)</label>
-                    <input type="email" value={birthdayData.correo} onChange={e => setBirthdayData({...birthdayData, correo: e.target.value})} className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-secondary/50 transition-colors" placeholder="correo@ejemplo.com" />
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Correo Electrónico (Opcional)</label>
+                    <input type="email" value={birthdayData.correo} onChange={e => setBirthdayData({...birthdayData, correo: e.target.value})} className="w-full bg-[#1B1B1B] border border-white/5 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-secondary/50 transition-colors" placeholder="correo@ejemplo.com" />
                   </div>
                   
-                  <button disabled={isSubmittingBirthday} type="submit" className="w-full bg-secondary text-white py-3 rounded-xl font-bold text-sm shadow-md shadow-secondary/20 mt-2 disabled:opacity-70 flex justify-center items-center">
-                    {isSubmittingBirthday ? <Loader2 size={18} className="animate-spin" /> : "Guardar mis datos"}
+                  <button disabled={isSubmittingBirthday} type="submit" className="w-full bg-secondary text-dark py-2.5 rounded-xl font-bold text-xs shadow-md shadow-secondary/15 mt-3 disabled:opacity-70 flex justify-center items-center">
+                    {isSubmittingBirthday ? <Loader2 size={16} className="animate-spin" /> : "Guardar mis datos"}
                   </button>
                 </form>
               )}
@@ -629,44 +716,45 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* FEEDBACK REVIEW MODAL */}
       <AnimatePresence>
         {showReviewForm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[70] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4"
           >
             <motion.div
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto"
+              className="bg-[#2A2A2A] w-full max-w-sm rounded-2xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto border border-white/10 text-white"
             >
               <button
                 onClick={() => setShowReviewForm(false)}
-                className="absolute top-4 right-4 w-8 h-8 bg-gray-50 rounded-full flex items-center justify-center"
+                className="absolute top-4 right-4 w-8 h-8 bg-white/5 rounded-full flex items-center justify-center text-gray-400 hover:bg-white/10"
               >
-                <X size={18} className="text-gray-400" />
+                <X size={16} />
               </button>
 
               <div className="flex flex-col items-center text-center mb-5 mt-2">
-                <div className="w-12 h-12 bg-teal-50 rounded-full flex items-center justify-center mb-3">
-                  <Star size={24} className="text-primary fill-primary" />
+                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-3 text-primary border border-primary/20">
+                  <Star size={22} className="fill-primary" />
                 </div>
-                <h2 className="font-title text-2xl text-dark leading-none mb-2">¡Calificanos!</h2>
-                <p className="text-xs text-gray-500">Tu opinión es muy importante para nosotros.</p>
+                <h2 className="font-category font-bold text-lg text-white uppercase tracking-wider mb-1">¡Calificanos!</h2>
+                <p className="text-[11px] text-gray-400 leading-normal">Tu opinión es muy importante para nosotros.</p>
               </div>
 
               {reviewSuccess ? (
-                <div className="bg-green-50 text-green-600 p-4 rounded-2xl text-center text-sm font-bold border border-green-100">
+                <div className="bg-green-500/10 text-green-400 p-4 rounded-xl text-center text-xs font-bold border border-green-500/20">
                   ¡Gracias por tu reseña! Nos ayuda a mejorar.
                 </div>
               ) : (
-                <form onSubmit={handleReviewSubmit} className="space-y-5">
+                <form onSubmit={handleReviewSubmit} className="space-y-4">
                   
-                  <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex flex-col items-center">
-                    <p className="text-xs font-bold text-gray-500 mb-2">Atención del Mozo</p>
+                  <div className="bg-[#1B1B1B] p-3 rounded-xl border border-white/5 flex flex-col items-center">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Atención del Mozo</p>
                     <div className="flex gap-1">
                       {[1,2,3,4,5].map(star => (
                         <button 
@@ -674,14 +762,14 @@ export default function App() {
                           onClick={() => setReviewData({...reviewData, estrellasMozo: star})}
                           className="p-1 transition-transform hover:scale-110"
                         >
-                          <Star size={28} className={reviewData.estrellasMozo >= star ? "text-yellow-400 fill-yellow-400" : "text-gray-300"} />
+                          <Star size={24} className={reviewData.estrellasMozo >= star ? "text-yellow-400 fill-yellow-400" : "text-gray-600"} />
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex flex-col items-center">
-                    <p className="text-xs font-bold text-gray-500 mb-2">Calidad de la Comida</p>
+                  <div className="bg-[#1B1B1B] p-3 rounded-xl border border-white/5 flex flex-col items-center">
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">Calidad de la Comida</p>
                     <div className="flex gap-1">
                       {[1,2,3,4,5].map(star => (
                         <button 
@@ -689,25 +777,25 @@ export default function App() {
                           onClick={() => setReviewData({...reviewData, estrellasComida: star})}
                           className="p-1 transition-transform hover:scale-110"
                         >
-                          <Star size={28} className={reviewData.estrellasComida >= star ? "text-yellow-400 fill-yellow-400" : "text-gray-300"} />
+                          <Star size={24} className={reviewData.estrellasComida >= star ? "text-yellow-400 fill-yellow-400" : "text-gray-600"} />
                         </button>
                       ))}
                     </div>
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Comentario (Opcional)</label>
+                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Comentario (Opcional)</label>
                     <textarea 
                       rows={3} 
                       value={reviewData.comentario} 
                       onChange={e => setReviewData({...reviewData, comentario: e.target.value})} 
-                      className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/50 transition-colors resize-none mt-1" 
+                      className="w-full bg-[#1B1B1B] border border-white/5 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-primary/50 transition-colors resize-none mt-1" 
                       placeholder="Cuéntanos más sobre tu experiencia..." 
                     />
                   </div>
                   
-                  <button disabled={isSubmittingReview} type="submit" className="w-full bg-primary text-white py-3 rounded-xl font-bold text-sm shadow-md shadow-primary/20 mt-2 disabled:opacity-70 flex justify-center items-center">
-                    {isSubmittingReview ? <Loader2 size={18} className="animate-spin" /> : "Enviar Reseña"}
+                  <button disabled={isSubmittingReview} type="submit" className="w-full bg-primary text-white py-2.5 rounded-xl font-bold text-xs shadow-md shadow-primary/15 mt-3 disabled:opacity-70 flex justify-center items-center">
+                    {isSubmittingReview ? <Loader2 size={16} className="animate-spin" /> : "Enviar Reseña"}
                   </button>
                 </form>
               )}
